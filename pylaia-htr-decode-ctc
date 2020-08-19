@@ -62,7 +62,9 @@ def main(args):
                 out = [str(syms[val]) for val in out]
             if bool(args.print_segmentation):
                 h, w = batch_input.sizes[i].tolist()
-                out = char_segmentation(out, decoder.segmentation[i], h, width=w)
+                out = char_segmentation(
+                    out, decoder.segmentation[i], decoder.prob[i], h, width=w
+                )
                 if args.print_segmentation == "word":
                     out = word_segmentation(out, args.input_space)
             else:
