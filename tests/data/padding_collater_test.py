@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import torch
 
-from laia.data import PaddingCollater
+from laia.data.padding_collater import PaddingCollater
 
 
 class TestPaddingCollater(unittest.TestCase):

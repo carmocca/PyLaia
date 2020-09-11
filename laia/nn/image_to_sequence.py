@@ -24,7 +24,9 @@ def image_to_sequence(x, columnwise=True, return_packed=False):
     else:
         xs = xs[:, 1 if columnwise else 0]
         return (
-            pack_padded_sequence(x, xs.tolist()) if return_packed else (x, xs.tolist())
+            pack_padded_sequence(x, xs.tolist(), enforce_sorted=False)
+            if return_packed
+            else (x, xs.tolist())
         )
 
 

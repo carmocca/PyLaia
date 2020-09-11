@@ -9,11 +9,10 @@ import torch
 import laia.common.logging as log
 import laia.data.transforms as transforms
 from laia.data import (
+    ImageDataLoader,
     ImageFromListDataset,
-    PaddingCollater,
     TextImageFromTextTableDataset,
 )
-from laia.data.padding_collater import by_descending_width
 from laia.utils import SymbolsTable
 
 _logger = log.get_logger(__name__)
@@ -89,42 +88,36 @@ class DataModule(pl.core.LightningDataModule):
                 img_transform=self.test_transforms,
             )
 
-    def train_dataloader(self) -> torch.utils.data.DataLoader:
+    def train_dataloader(self) -> ImageDataLoader:
         assert self.tr_ds is not None
-        return torch.utils.data.DataLoader(
-            dataset=self.tr_ds,
+        return ImageDataLoader(
+            self.tr_ds,
             batch_size=self.batch_size,
-            num_workers=self.num_workers,
             shuffle=self.tr_shuffle,
+            num_workers=self.num_workers,
             worker_init_fn=DataModule.worker_init_fn,
             pin_memory=self.pin_memory,
-            collate_fn=PaddingCollater(
-                {"img": (self.img_channels, None, None)}, sort_key=by_descending_width
-            ),
+            sampler="balanced",
         )
 
-    def val_dataloader(self) -> torch.utils.data.DataLoader:
+    def val_dataloader(self) -> ImageDataLoader:
         assert self.va_ds is not None
-        return torch.utils.data.DataLoader(
-            dataset=self.va_ds,
+        return ImageDataLoader(
+            self.va_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            worker_init_fn=DataModule.worker_init_fn,
             pin_memory=self.pin_memory,
-            collate_fn=PaddingCollater(
-                {"img": (self.img_channels, None, None)}, sort_key=by_descending_width
-            ),
         )
 
-    def test_dataloader(self) -> torch.utils.data.DataLoader:
+    def test_dataloader(self) -> ImageDataLoader:
         assert self.te_ds is not None
-        return torch.utils.data.DataLoader(
-            dataset=self.te_ds,
+        return ImageDataLoader(
+            self.te_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            worker_init_fn=DataModule.worker_init_fn,
             pin_memory=self.pin_memory,
-            collate_fn=PaddingCollater(
-                {"img": (self.img_channels, None, None)}, sort_key=by_descending_width
-            ),
         )
 
     @staticmethod

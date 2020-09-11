@@ -38,7 +38,7 @@ class EngineModule(pl.core.LightningModule):
         self.batch_id_fn = batch_id_fn
         # training_step(), validation_step()
         self.batch_y_hat = None
-        # backward()
+        # backward(), optimizer_step()
         self.current_batch = None
         # required by auto_lr_find
         self.lr = self.optimizer_kwargs["learning_rate"]
@@ -150,6 +150,20 @@ class EngineModule(pl.core.LightningModule):
     def backward(self, trainer, loss, optimizer, optimizer_idx):
         with self.exception_catcher(self.current_batch):
             loss.backward()
+
+    def optimizer_step(self, current_epoch, batch_idx, optimizer, *args, **kwargs):
+        batch_x, _ = self.prepare_batch(self.current_batch)
+        batch_size = batch_x.data.size(0)
+        if self.trainer.datamodule.batch_size != batch_size:
+            lrs = [pg["lr"] for pg in optimizer.param_groups]
+            for pg in optimizer.param_groups:
+                # scale the learning rate to the current batch size
+                pg["lr"] = self.lr / self.trainer.datamodule.batch_size * batch_size
+            super().optimizer_step(current_epoch, batch_idx, optimizer, *args, **kwargs)
+            for pg, v in zip(optimizer.param_groups, lrs):
+                pg["lr"] = v
+        else:
+            super().optimizer_step(current_epoch, batch_idx, optimizer, *args, **kwargs)
 
     def training_step(self, batch: Any, batch_idx: int) -> pl.TrainResult:
         self.current_batch = batch

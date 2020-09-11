@@ -45,20 +45,16 @@ class PaddedTensor(NamedTuple):
         return self.data.device
 
 
-def by_descending_width(x):
-    # C x H x W
-    return -x["img"].size(2)
-
-
 class PaddingCollater:
-    def __init__(self, sizes: Any, sort_key: Callable = None):
-        self._sizes = sizes
-        self._sort_key = sort_key
+    def __init__(self, sizes: Any, sort_fn: Callable = None, reverse: bool = False):
+        self.sizes = sizes
+        self.sort_fn = sort_fn
+        self.reverse = reverse
 
     def __call__(self, batch: Any) -> torch.Tensor:
-        if self._sort_key:
-            batch = sorted(batch, key=self._sort_key)
-        return self.collate(batch, self._sizes)
+        if self.sort_fn:
+            batch = sorted(batch, key=self.sort_fn, reverse=self.reverse)
+        return self.collate(batch, self.sizes)
 
     @staticmethod
     def get_max_sizes(
@@ -80,7 +76,7 @@ class PaddingCollater:
     def collate_tensors(
         batch: List[torch.Tensor], max_sizes: Tuple[int, ...]
     ) -> torch.Tensor:
-        out = batch[0].new_zeros(size=max_sizes)
+        out = batch[0].new_zeros(max_sizes)
         for i, x in enumerate(batch):
             batch_tensor = out[i]
             for d in range(batch[0].dim()):
