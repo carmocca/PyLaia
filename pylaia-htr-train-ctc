@@ -27,6 +27,7 @@ def main(args: argparse.Namespace):
 
     pl.seed_everything(args.seed)
 
+    # maybe load a checkpoint
     checkpoint = None
     filepath = os.path.join(args.train_path, args.experiment_dirname)
     if args.checkpoint:
@@ -37,7 +38,7 @@ def main(args: argparse.Namespace):
             exit(1)
         log.info(f'Using checkpoint="{checkpoint}')
 
-    # Load the non-pytorch_lightning model
+    # load the non-pytorch_lightning model
     model = ModelLoader(args.train_path, filename=args.model_filename).load()
     if model is None:
         log.error('Could not find the model. Have you run "pylaia-htr-create-model"?')
@@ -45,6 +46,7 @@ def main(args: argparse.Namespace):
 
     syms = SymbolsTable(args.syms)
 
+    # prepare the engine
     optimizer_kwargs = {
         "learning_rate": args.learning_rate,
         "momentum": args.momentum,
@@ -65,6 +67,7 @@ def main(args: argparse.Namespace):
         batch_id_fn=ItemFeeder("id"),  # Used to print image ids on exception
     )
 
+    # prepare the data
     data_module = DataModule(
         img_dirs=args.img_dirs,
         color_mode=args.color_mode,
@@ -77,28 +80,48 @@ def main(args: argparse.Namespace):
         stage="fit",
     )
 
+    # set-up early stopping
     early_stopping_callback = pl.callbacks.EarlyStopping(
-        monitor=args.monitor,
+        monitor=args.early_stopping_monitor,
         patience=args.early_stopping_patience,
         verbose=True,
         mode="min",
     )
-    # TODO: save on lowest_va_wer and every k epochs https://github.com/PyTorchLightning/pytorch-lightning/issues/2908
+
+    # set-up checkpoint callbacks
     pl.callbacks.ModelCheckpoint.CHECKPOINT_NAME_LAST = "{epoch}-last"
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        filepath=filepath + "/{epoch}-lowest_" + args.monitor,
-        monitor=args.monitor,
-        verbose=True,
-        save_top_k=args.checkpoint_k,
+    on_best_cer = pl.callbacks.ModelCheckpoint(
+        filepath=filepath + "/{epoch}-lowest_va_cer",
+        monitor="va_cer",
         mode="min",
-        save_last=True,
+        save_top_k=args.checkpoint_k,
+        verbose=True,
     )
+    on_best_wer = pl.callbacks.ModelCheckpoint(
+        filepath=filepath + "/{epoch}-lowest_va_wer",
+        monitor="va_wer",
+        mode="min",
+        save_top_k=args.checkpoint_k,
+        verbose=True,
+    )
+    every_k_epochs = pl.callbacks.ModelCheckpoint(
+        filepath=filepath + "/{epoch}",
+        monitor=None,
+        period=args.checkpoint_interval,
+        save_top_k=-1,
+        save_last=True,
+        verbose=True,
+    )
+    checkpoint_callback = [on_best_cer, on_best_wer, every_k_epochs]
+
+    # set-up other callbacks
     callbacks = [ProgressBar(refresh_rate=args.lightning.progress_bar_refresh_rate)]
     if args.gpu_stats_callback and args.lightning.gpus != 0:
         callbacks.append(pl.callbacks.GPUStatsMonitor())
     if args.scheduler:
         callbacks.append(LearningRate(logging_interval="epoch"))
 
+    # prepare the trainer
     trainer = pl.Trainer(
         default_root_dir=args.train_path,
         early_stop_callback=early_stopping_callback,
@@ -107,13 +130,14 @@ def main(args: argparse.Namespace):
         callbacks=callbacks,
         **vars(args.lightning),
     )
+
+    # train!
     trainer.fit(engine_module, datamodule=data_module)
 
-    log.info(
-        f'Best {args.monitor}="{checkpoint_callback.best_model_score}" '
-        f'obtained with model="{checkpoint_callback.best_model_path}"'
-    )
-    exit(0)
+    for c in checkpoint_callback[:-1]:
+        log.info(
+            f'Best {c.monitor}="{c.best_model_score}" obtained with model="{c.best_model_path}"'
+        )
 
 
 if __name__ == "__main__":
@@ -159,6 +183,20 @@ if __name__ == "__main__":
         help="Sequence of characters representing the word delimiters",
     )
     add_argument(
+        "--optimizer",
+        type=str,
+        default="RMSProp",
+        choices=["SGD", "RMSProp", "Adam", "AdamW"],
+        help="Optimization algorithm",
+    )
+    add_argument(
+        "--early_stopping_monitor",
+        type=str,
+        default="va_cer",
+        choices=metrics,
+        help="Metric to monitor for early stopping",
+    )
+    add_argument(
         "--early_stopping_patience",
         type=NumberInClosedRange(int, vmin=0),
         default=20,
@@ -168,18 +206,10 @@ if __name__ == "__main__":
         ),
     )
     add_argument(
-        "--optimizer",
-        type=str,
-        default="RMSProp",
-        choices=["SGD", "RMSProp", "Adam", "AdamW"],
-        help="Optimization algorithm",
-    )
-    add_argument(
-        "--monitor",
-        type=str,
-        default="va_cer",
-        choices=metrics,
-        help="Metric to monitor for early stopping and checkpointing",
+        "--checkpoint_interval",
+        type=NumberInClosedRange(int, vmin=0),
+        default=0,
+        help="Create a checkpoint every `checkpoint_interval` epochs",
     )
     add_argument(
         "--scheduler",
