@@ -132,14 +132,15 @@ class EngineModule(pl.LightningModule):
         batch_loss = self.compute_loss(batch, batch_y_hat, batch_y)
         if batch_loss is None:
             return
-        self.log(
-            "tr_loss",
-            batch_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        if torch.isfinite(batch_loss):
+            self.log(
+                "tr_loss",
+                batch_loss,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
         return {"loss": batch_loss, "batch_y_hat": batch_y_hat}
 
     def validation_step(self, batch: Any, *_, **__):
@@ -150,14 +151,15 @@ class EngineModule(pl.LightningModule):
         batch_loss = self.compute_loss(batch, batch_y_hat, batch_y)
         if batch_loss is None:
             return
-        self.log(
-            "va_loss",
-            batch_loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            sync_dist=True,
-        )
+        if torch.isfinite(batch_loss):
+            self.log(
+                "va_loss",
+                batch_loss,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+            )
         return {"loss": batch_loss, "batch_y_hat": batch_y_hat}
 
     def get_progress_bar_dict(self):

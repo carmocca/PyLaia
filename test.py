@@ -2,6 +2,7 @@ import tempfile
 
 import numpy as np
 import pytorch_lightning as pl
+import torch
 
 import laia.common.logging as log
 from laia.callbacks import ProgressBar
@@ -60,15 +61,19 @@ class TestEngineModule(EngineModule):
 
 
 class TestCTCLoss(CTCLoss):
-    invalid_return = None
-    # invalid_return = torch.tensor(float("nan"), requires_grad=True)
-    # invalid_return = torch.tensor(float('inf'), requires_grad=True)
+    # invalid_return = None
+    invalid_return = "inf"
+    # invalid_return = "nan"
 
     def forward(self, *args, **kwargs):
+        loss = super().forward(*args, **kwargs)
         # weighted coin flip
         if np.random.binomial(1, 0.1):
-            return self.invalid_return
-        return super().forward(*args, **kwargs)
+            if self.invalid_return is None:
+                loss = None
+            else:
+                loss.data = torch.tensor(float(self.invalid_return), device=loss.device)
+        return loss
 
 
 engine_module = TestEngineModule(
